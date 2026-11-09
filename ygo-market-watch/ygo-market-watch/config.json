@@ -1,0 +1,30 @@
+{
+  "spike": {
+    "min_pct": 35,
+    "min_dollar": 1.0,
+    "min_price": 2.0,
+    "min_prev_price": 0.5
+  },
+  "trend": {
+    "window_days": 7,
+    "min_pct": 25,
+    "min_dollar": 1.5,
+    "min_price": 2.0,
+    "min_up_days": 4,
+    "max_down_days": 1
+  },
+  "crash": {
+    "min_pct": 30,
+    "min_dollar": 2.0,
+    "min_prev_price": 5.0
+  },
+  "alerts": {
+    "cooldown_days": 5,
+    "realert_extra_pct": 25
+  },
+  "site": {
+    "history_days": 120,
+    "alert_log_size": 300,
+    "min_price_movers": 1.0
+  }
+}

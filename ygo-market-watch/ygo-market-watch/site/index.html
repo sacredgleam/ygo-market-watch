@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YGO Market Watch</title>
+<style>
+  :root {
+    --bg: #f6f6f3; --panel: #ffffff; --ink: #1b1d22; --muted: #6b6f78; --line: #e4e3de;
+    --up: #13804b; --down: #c0392b; --accent: #5b3fd1; --warn: #b45309;
+    --spike-bg: #fdecec; --trend-bg: #e9f6ef; --crash-bg: #fff3e0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121317; --panel: #1b1d23; --ink: #ecedf0; --muted: #9aa0ab; --line: #2c2f37;
+      --up: #3ccf86; --down: #ff6b5e; --accent: #9d86ff; --warn: #f2a541;
+      --spike-bg: #3a1d1d; --trend-bg: #173326; --crash-bg: #3a2a14;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 20px 24px 8px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; }
+  .meta { color: var(--muted); font-size: 13px; }
+  nav { display: flex; gap: 4px; padding: 0 24px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  nav button { background: none; border: 0; padding: 10px 12px; font: inherit; color: var(--muted);
+               border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; }
+  nav button.on { color: var(--ink); border-color: var(--accent); font-weight: 600; }
+  main { padding: 20px 24px 60px; max-width: 1200px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .panel h2 { font-size: 14px; margin: 0 0 10px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .tile b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+  .tile span { color: var(--muted); font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; cursor: pointer; user-select: none; }
+  td.num, th.num { text-align: right; }
+  tr.click { cursor: pointer; }
+  tr.click:hover td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  .up { color: var(--up); } .down { color: var(--down); } .flat { color: var(--muted); }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; }
+  .b-spike { background: var(--spike-bg); color: var(--down); }
+  .b-trend { background: var(--trend-bg); color: var(--up); }
+  .b-crash { background: var(--crash-bg); color: var(--warn); }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+  input[type=search], input[type=number], select {
+    font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--panel); color: var(--ink); }
+  input[type=search] { min-width: 260px; flex: 1; }
+  input[type=number] { width: 90px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; background: var(--panel); color: var(--muted); padding: 7px 12px; font: inherit; cursor: pointer; }
+  .seg button.on { background: var(--accent); color: #fff; }
+  .empty { color: var(--muted); padding: 18px 4px; }
+  .star { background: none; border: 0; cursor: pointer; font-size: 16px; color: var(--muted); padding: 0 4px; }
+  .star.on { color: #e0a800; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  a { color: var(--accent); }
+  /* card detail drawer */
+  #detail { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+  #detail.open { display: flex; }
+  #detail .box { background: var(--panel); border-radius: 12px; width: min(760px, 100%); max-height: 90vh; overflow: auto; padding: 18px 20px; border: 1px solid var(--line); }
+  #detail h3 { margin: 0 0 4px; font-size: 18px; }
+  #detail .close { float: right; background: none; border: 0; font-size: 22px; cursor: pointer; color: var(--muted); }
+  .chart { width: 100%; height: 240px; margin: 12px 0; }
+  .chart text { fill: var(--muted); font-size: 11px; }
+  .stats { display: flex; gap: 22px; flex-wrap: wrap; }
+  .stats div > span { display: block; color: var(--muted); font-size: 12px; }
+  .stats div b { font-size: 16px; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<header>
+  <h1>YGO Market Watch</h1>
+  <div class="meta" id="meta">Loading…</div>
+</header>
+<nav id="tabs">
+  <button data-tab="alerts" class="on">Alerts</button>
+  <button data-tab="movers">Movers</button>
+  <button data-tab="search">All cards</button>
+  <button data-tab="watch">Watchlist</button>
+</nav>
+<main id="view"></main>
+
+<div id="detail" role="dialog" aria-modal="true">
+  <div class="box" id="detailBox"></div>
+</div>
+
+<script>
+const S = { summary: null, rows: [], byId: new Map(), hist: {}, tab: "alerts",
+            moverPeriod: 1, moverMin: 1, sortKey: 2, sortDir: -1, query: "", watch: loadWatch() };
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const money = x => x == null ? "–" : "$" + x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pctCell = v => v == null ? '<span class="flat">–</span>'
+  : `<span class="${v > 0 ? "up" : v < 0 ? "down" : "flat"}">${v > 0 ? "+" : ""}${v.toFixed(1)}%</span>`;
+const tcg = n => "https://www.tcgplayer.com/search/yugioh/product?q=" + encodeURIComponent(n);
+const KIND = { spike: ["Possible buyout", "b-spike"], trend: ["Steady climb", "b-trend"], crash: ["Crash", "b-crash"] };
+
+function loadWatch() { try { return new Set(JSON.parse(localStorage.getItem("ygo-watch") || "[]")); } catch { return new Set(); } }
+function saveWatch() { try { localStorage.setItem("ygo-watch", JSON.stringify([...S.watch])); } catch {} }
+
+async function init() {
+  try {
+    const [sum, cards] = await Promise.all([
+      fetch("data/summary.json", { cache: "no-store" }).then(r => r.json()),
+      fetch("data/cards.json", { cache: "no-store" }).then(r => r.json()),
+    ]);
+    S.summary = sum; S.rows = cards.rows;
+    for (const r of S.rows) S.byId.set(r[0], r);
+    S.moverMin = sum.min_price_movers ?? 1;
+    $("#meta").textContent = `Prices as of ${sum.date} · ${sum.priced_cards.toLocaleString()} cards tracked · ${sum.snapshots} day(s) of history since ${sum.first_date}`;
+  } catch (e) {
+    $("#view").innerHTML = `<div class="empty">No data yet. The first daily run fills this in.</div>`;
+    $("#meta").textContent = ""; return;
+  }
+  render(); openFromHash();
+}
+
+document.getElementById("tabs").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  S.tab = b.dataset.tab;
+  document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("on", x === b));
+  render();
+});
+
+function render() {
+  const v = $("#view");
+  if (S.tab === "alerts") v.innerHTML = alertsView();
+  if (S.tab === "movers") v.innerHTML = moversView();
+  if (S.tab === "search") v.innerHTML = searchView();
+  if (S.tab === "watch") v.innerHTML = watchView();
+  wire(v);
+}
+
+function signalTable(list, withDate) {
+  if (!list.length) return `<div class="empty">Nothing flagged.</div>`;
+  return `<table><thead><tr>${withDate ? "<th>Date</th>" : ""}<th>Signal</th><th>Card</th><th class="num">Price</th><th>What happened</th></tr></thead><tbody>` +
+    list.map(s => `<tr class="click" data-id="${s.id}">${withDate ? `<td>${s.date}</td>` : ""}
+      <td><span class="badge ${KIND[s.kind][1]}">${KIND[s.kind][0]}</span></td>
+      <td>${esc(s.name)}</td><td class="num">${money(s.price)}</td><td>${esc(s.why)}</td></tr>`).join("") + "</tbody></table>";
+}
+
+function alertsView() {
+  const sum = S.summary, sig = sum.signals;
+  const n = k => sig.filter(s => s.kind === k).length;
+  const history = sum.snapshots < 2
+    ? `<div class="panel" style="margin-bottom:16px">Collecting history. Alerts start after the second daily snapshot, and the 7-day trend check needs about a week.</div>` : "";
+  return `${history}<div class="tiles">
+      <div class="tile"><b class="down">${n("spike")}</b><span>Possible buyouts today</span></div>
+      <div class="tile"><b class="up">${n("trend")}</b><span>Steady climbs today</span></div>
+      <div class="tile"><b style="color:var(--warn)">${n("crash")}</b><span>Crashes today</span></div>
+      <div class="tile"><b>${sum.alert_log.length}</b><span>Alerts in the log</span></div>
+    </div>
+    <div class="panel" style="margin-bottom:16px"><h2>Flagged today (${sum.date})</h2>${signalTable(sig, false)}
+      <div class="note">Buyout = one-day jump of at least ${sum.config.spike.min_pct}% and $${sum.config.spike.min_dollar} on a card now ≥ $${sum.config.spike.min_price}.
+      Climb = up ${sum.config.trend.min_pct}%+ over ${sum.config.trend.window_days} days, rising on ${sum.config.trend.min_up_days}+ days. Thresholds live in config.json.</div></div>
+    <div class="panel"><h2>Alert history</h2>${signalTable(sum.alert_log, true)}</div>`;
+}
+
+function moversView() {
+  const idx = { 1: 3, 7: 4, 30: 5 }[S.moverPeriod];
+  const pool = S.rows.filter(r => r[2] >= S.moverMin && r[idx] != null);
+  const dollar = r => r[2] - r[2] / (1 + r[idx] / 100);
+  const gain = [...pool].sort((a, b) => b[idx] - a[idx]).slice(0, 40);
+  const loss = [...pool].sort((a, b) => a[idx] - b[idx]).slice(0, 40);
+  const tbl = list => `<table><thead><tr><th></th><th>Card</th><th class="num">Price</th><th class="num">Change</th><th class="num">$</th></tr></thead><tbody>` +
+    list.map(r => `<tr class="click" data-id="${r[0]}"><td>${starBtn(r[0])}</td><td>${esc(r[1])}</td><td class="num">${money(r[2])}</td>
+      <td class="num">${pctCell(r[idx])}</td><td class="num">${(dollar(r) >= 0 ? "+" : "−") + money(Math.abs(dollar(r)))}</td></tr>`).join("") + "</tbody></table>";
+  return `<div class="controls">
+      <div class="seg" id="period">${[1, 7, 30].map(p => `<button data-p="${p}" class="${p === S.moverPeriod ? "on" : ""}">${p === 1 ? "1 day" : p + " days"}</button>`).join("")}</div>
+      <label class="meta">Min price $ <input type="number" id="minp" min="0" step="0.5" value="${S.moverMin}"></label>
+    </div>
+    <div class="grid"><div class="panel"><h2>Biggest gainers</h2>${gain.length ? tbl(gain) : '<div class="empty">Not enough history yet.</div>'}</div>
+    <div class="panel"><h2>Biggest losers</h2>${loss.length ? tbl(loss) : '<div class="empty">Not enough history yet.</div>'}</div></div>
+    ${S.summary.snapshots < 31 && S.moverPeriod > 1 ? `<div class="note">Less than ${S.moverPeriod} days of history so far, so this compares with the oldest snapshot (${S.summary.first_date}).</div>` : ""}`;
+}
+
+function starBtn(id) { return `<button class="star ${S.watch.has(id) ? "on" : ""}" data-star="${id}" title="Watchlist">${S.watch.has(id) ? "★" : "☆"}</button>`; }
+
+function cardTable(list, limit = 200) {
+  const cols = [["Card", 1], ["Price", 2], ["1d", 3], ["7d", 4], ["30d", 5]];
+  const sorted = [...list].sort((a, b) => {
+    const x = a[S.sortKey], y = b[S.sortKey];
+    if (x == null) return 1; if (y == null) return -1;
+    return (x > y ? 1 : x < y ? -1 : 0) * S.sortDir;
+  });
+  return `<table><thead><tr><th></th>${cols.map(([l, k]) => `<th class="${k > 1 ? "num" : ""}" data-sort="${k}">${l}${S.sortKey === k ? (S.sortDir > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr></thead><tbody>` +
+    sorted.slice(0, limit).map(r => `<tr class="click" data-id="${r[0]}"><td>${starBtn(r[0])}</td><td>${esc(r[1])}</td><td class="num">${money(r[2])}</td>
+      <td class="num">${pctCell(r[3])}</td><td class="num">${pctCell(r[4])}</td><td class="num">${pctCell(r[5])}</td></tr>`).join("") +
+    `</tbody></table>${sorted.length > limit ? `<div class="note">Showing ${limit} of ${sorted.length.toLocaleString()}. Narrow the search to see more.</div>` : ""}`;
+}
+
+function searchResults() {
+  const q = S.query.trim().toLowerCase();
+  return cardTable(q ? S.rows.filter(r => r[1].toLowerCase().includes(q)) : S.rows);
+}
+function searchView() {
+  return `<div class="controls"><input type="search" id="q" placeholder="Search ${S.rows.length.toLocaleString()} cards…" value="${esc(S.query)}"></div>
+    <div class="panel" id="results">${searchResults()}</div>`;
+}
+function refreshResults() { const r = $("#results"); r.innerHTML = searchResults(); wire(r); }
+
+function watchView() {
+  const list = [...S.watch].map(id => S.byId.get(id)).filter(Boolean);
+  return `<div class="panel"><h2>Your watchlist</h2>${list.length ? cardTable(list) : '<div class="empty">Tap ☆ next to any card to watch it. Your list is saved in this browser.</div>'}</div>`;
+}
+
+function wire(v) {
+  v.querySelectorAll("tr.click").forEach(tr => tr.addEventListener("click", e => {
+    if (e.target.closest("[data-star]")) return; openCard(+tr.dataset.id);
+  }));
+  v.querySelectorAll("[data-star]").forEach(b => b.addEventListener("click", e => {
+    e.stopPropagation(); const id = +b.dataset.star;
+    S.watch.has(id) ? S.watch.delete(id) : S.watch.add(id); saveWatch();
+    if (S.tab === "watch") render(); else { b.classList.toggle("on"); b.textContent = S.watch.has(id) ? "★" : "☆"; }
+  }));
+  v.querySelectorAll("[data-sort]").forEach(th => th.addEventListener("click", () => {
+    const k = +th.dataset.sort; S.sortDir = S.sortKey === k ? -S.sortDir : (k === 1 ? 1 : -1); S.sortKey = k; rerenderKeepFocus();
+  }));
+  const q = $("#q", v);
+  if (q) q.addEventListener("input", () => { S.query = q.value; refreshResults(); });
+  const per = $("#period", v);
+  if (per) per.addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.moverPeriod = +b.dataset.p; render(); } });
+  const mp = $("#minp", v);
+  if (mp) mp.addEventListener("change", () => { S.moverMin = +mp.value || 0; render(); });
+}
+function rerenderKeepFocus() {
+  if (S.tab === "search") refreshResults(); else render();
+}
+
+async function loadHist(id) {
+  const chunk = id % 64;
+  if (!S.hist[chunk]) S.hist[chunk] = await fetch(`data/hist/${chunk}.json`, { cache: "no-store" }).then(r => r.json());
+  const h = S.hist[chunk];
+  return { dates: h.dates, prices: h.cards[String(id)] || [] };
+}
+
+async function openCard(id) {
+  const r = S.byId.get(id); if (!r) return;
+  history.replaceState(null, "", "#card-" + id);
+  const box = $("#detailBox");
+  box.innerHTML = `<button class="close" aria-label="Close">×</button><h3>${esc(r[1])}</h3><div class="meta">Loading history…</div>`;
+  $("#detail").classList.add("open");
+  wireDetail();
+  const { dates, prices } = await loadHist(id);
+  const pts = dates.map((d, i) => [d, prices[i]]).filter(p => p[1] != null);
+  const vals = pts.map(p => p[1]);
+  const hi = Math.max(...vals), lo = Math.min(...vals);
+  const alerts = S.summary.alert_log.filter(a => a.id === id);
+  box.innerHTML = `<button class="close" aria-label="Close">×</button>
+    <h3>${esc(r[1])}</h3>
+    <div class="meta"><a href="${tcg(r[1])}" target="_blank" rel="noopener">Open on TCGplayer</a> ·
+      <button class="star ${S.watch.has(id) ? "on" : ""}" data-star="${id}">${S.watch.has(id) ? "★ Watching" : "☆ Watch"}</button></div>
+    <div class="stats" style="margin-top:12px">
+      <div><span>Price</span><b>${money(r[2])}</b></div>
+      <div><span>1 day</span><b>${pctCell(r[3])}</b></div>
+      <div><span>7 days</span><b>${pctCell(r[4])}</b></div>
+      <div><span>30 days</span><b>${pctCell(r[5])}</b></div>
+      <div><span>High / low shown</span><b>${money(hi)} / ${money(lo)}</b></div>
+    </div>
+    ${chartSvg(pts)}
+    ${alerts.length ? `<h2 style="font-size:14px">Alerts for this card</h2>${signalTable(alerts, true)}` : ""}
+    <div class="note">TCGplayer price from YGOPRODeck, one value per card (not per printing).</div>`;
+  wireDetail();
+  box.querySelector("[data-star]").addEventListener("click", e => {
+    S.watch.has(id) ? S.watch.delete(id) : S.watch.add(id); saveWatch();
+    e.target.className = "star " + (S.watch.has(id) ? "on" : ""); e.target.textContent = S.watch.has(id) ? "★ Watching" : "☆ Watch";
+    if (S.tab !== "alerts") render();
+  });
+}
+function wireDetail() { $("#detailBox .close").onclick = closeCard; }
+function closeCard() { $("#detail").classList.remove("open"); history.replaceState(null, "", location.pathname + location.search); }
+$("#detail").addEventListener("click", e => { if (e.target.id === "detail") closeCard(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeCard(); });
+function openFromHash() { const m = location.hash.match(/^#card-(\d+)$/); if (m) openCard(+m[1]); }
+window.addEventListener("hashchange", openFromHash);
+
+function chartSvg(pts) {
+  if (pts.length < 2) return `<div class="empty">Chart appears after a second day of prices.</div>`;
+  const W = 700, H = 240, L = 54, R = 12, T = 12, B = 26;
+  const vals = pts.map(p => p[1]);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const pad = (hi - lo) * 0.1 || hi * 0.1 || 1; lo = Math.max(0, lo - pad); hi += pad;
+  const x = i => L + (i / (pts.length - 1)) * (W - L - R);
+  const y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  const line = pts.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p[1]).toFixed(1)}`).join("");
+  const area = line + `L${x(pts.length - 1)},${H - B}L${L},${H - B}Z`;
+  const ticks = [0, 0.5, 1].map(f => lo + f * (hi - lo));
+  const xl = [0, Math.floor((pts.length - 1) / 2), pts.length - 1];
+  const up = vals[vals.length - 1] >= vals[0];
+  const col = up ? "var(--up)" : "var(--down)";
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Price history">
+    ${ticks.map(t => `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)"/><text x="${L - 6}" y="${y(t) + 4}" text-anchor="end">${money(t)}</text>`).join("")}
+    <path d="${area}" fill="${col}" opacity=".10"/>
+    <path d="${line}" fill="none" stroke="${col}" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    ${xl.map(i => `<text x="${x(i)}" y="${H - 6}" text-anchor="${i === 0 ? "start" : i === pts.length - 1 ? "end" : "middle"}">${pts[i][0].slice(5)}</text>`).join("")}
+  </svg>`;
+}
+
+init();
+</script>
+</body>
+</html>
