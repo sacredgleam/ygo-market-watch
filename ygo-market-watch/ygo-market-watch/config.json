@@ -20,7 +20,8 @@
   },
   "alerts": {
     "cooldown_days": 5,
-    "realert_extra_pct": 25
+    "realert_extra_pct": 25,
+    "new_card_quiet_days": 14
   },
   "site": {
     "history_days": 120,
