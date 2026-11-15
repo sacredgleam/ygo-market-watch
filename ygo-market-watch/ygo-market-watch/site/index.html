@@ -29,25 +29,26 @@
   nav button.on { color: var(--ink); border-color: var(--accent); font-weight: 600; }
   main { padding: 20px 24px 60px; max-width: 1200px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; }
   .panel h2 { font-size: 14px; margin: 0 0 10px; }
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
   .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
   .tile b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
   .tile span { color: var(--muted); font-size: 12px; }
   table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-  th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--line); }
+  th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--muted); font-weight: 500; font-size: 12px; cursor: pointer; user-select: none; }
-  td.num, th.num { text-align: right; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
   tr.click { cursor: pointer; }
   tr.click:hover td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  .sub { color: var(--muted); font-size: 12px; }
   .up { color: var(--up); } .down { color: var(--down); } .flat { color: var(--muted); }
-  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
   .b-spike { background: var(--spike-bg); color: var(--down); }
   .b-trend { background: var(--trend-bg); color: var(--up); }
   .b-crash { background: var(--crash-bg); color: var(--warn); }
   .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
-  input[type=search], input[type=number], select {
+  input[type=search], input[type=number] {
     font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px;
     background: var(--panel); color: var(--ink); }
   input[type=search] { min-width: 260px; flex: 1; }
@@ -60,7 +61,6 @@
   .star.on { color: #e0a800; }
   .note { color: var(--muted); font-size: 12px; margin-top: 10px; }
   a { color: var(--accent); }
-  /* card detail drawer */
   #detail { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
   #detail.open { display: flex; }
   #detail .box { background: var(--panel); border-radius: 12px; width: min(760px, 100%); max-height: 90vh; overflow: auto; padding: 18px 20px; border: 1px solid var(--line); }
@@ -81,7 +81,7 @@
 <nav id="tabs">
   <button data-tab="alerts" class="on">Alerts</button>
   <button data-tab="movers">Movers</button>
-  <button data-tab="search">All cards</button>
+  <button data-tab="search">All printings</button>
   <button data-tab="watch">Watchlist</button>
 </nav>
 <main id="view"></main>
@@ -91,18 +91,22 @@
 </div>
 
 <script>
-const S = { summary: null, rows: [], byId: new Map(), hist: {}, tab: "alerts",
-            moverPeriod: 1, moverMin: 1, sortKey: 2, sortDir: -1, query: "", watch: loadWatch() };
+// Row layout: [key, name, set, rarity, printing, number, price, 1d%, 7d%, 30d%]
+const R = { K: 0, N: 1, SET: 2, RAR: 3, SUB: 4, NUM: 5, P: 6, D1: 7, D7: 8, D30: 9 };
+const S = { summary: null, rows: [], hay: [], byId: new Map(), hist: {}, tab: "alerts",
+            moverPeriod: 1, moverMin: 1, sortKey: R.P, sortDir: -1, query: "", watch: loadWatch() };
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const money = x => x == null ? "–" : "$" + x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pctCell = v => v == null ? '<span class="flat">–</span>'
   : `<span class="${v > 0 ? "up" : v < 0 ? "down" : "flat"}">${v > 0 ? "+" : ""}${v.toFixed(1)}%</span>`;
-const tcg = n => "https://www.tcgplayer.com/search/yugioh/product?q=" + encodeURIComponent(n);
-const KIND = { spike: ["Possible buyout", "b-spike"], trend: ["Steady climb", "b-trend"], crash: ["Crash", "b-crash"] };
+const tcg = key => "https://www.tcgplayer.com/product/" + parseInt(key, 10);
+const KIND = { spike: ["Possible buyout", "b-spike"], trend: ["Climb (7d)", "b-trend"],
+               slow: ["Slow climb (30d)", "b-trend"], crash: ["Crash", "b-crash"] };
+const detailLine = r => [r[R.SET], r[R.RAR], r[R.SUB], r[R.NUM]].filter(Boolean).join(" · ");
 
-function loadWatch() { try { return new Set(JSON.parse(localStorage.getItem("ygo-watch") || "[]")); } catch { return new Set(); } }
-function saveWatch() { try { localStorage.setItem("ygo-watch", JSON.stringify([...S.watch])); } catch {} }
+function loadWatch() { try { return new Set(JSON.parse(localStorage.getItem("ygo-watch-p") || "[]")); } catch { return new Set(); } }
+function saveWatch() { try { localStorage.setItem("ygo-watch-p", JSON.stringify([...S.watch])); } catch {} }
 
 async function init() {
   try {
@@ -111,9 +115,10 @@ async function init() {
       fetch("data/cards.json", { cache: "no-store" }).then(r => r.json()),
     ]);
     S.summary = sum; S.rows = cards.rows;
-    for (const r of S.rows) S.byId.set(r[0], r);
+    S.hay = S.rows.map(r => [r[R.N], r[R.SET], r[R.RAR], r[R.SUB], r[R.NUM]].join(" ").toLowerCase());
+    for (const r of S.rows) S.byId.set(r[R.K], r);
     S.moverMin = sum.min_price_movers ?? 1;
-    $("#meta").textContent = `Prices as of ${sum.date} · ${sum.priced_cards.toLocaleString()} cards tracked · ${sum.snapshots} day(s) of history since ${sum.first_date}`;
+    $("#meta").textContent = `Prices as of ${sum.date} · ${sum.priced.toLocaleString()} printings tracked · ${sum.snapshots} day(s) of history since ${sum.first_date}`;
   } catch (e) {
     $("#view").innerHTML = `<div class="empty">No data yet. The first daily run fills this in.</div>`;
     $("#meta").textContent = ""; return;
@@ -140,36 +145,39 @@ function render() {
 function signalTable(list, withDate) {
   if (!list.length) return `<div class="empty">Nothing flagged.</div>`;
   return `<table><thead><tr>${withDate ? "<th>Date</th>" : ""}<th>Signal</th><th>Card</th><th class="num">Price</th><th>What happened</th></tr></thead><tbody>` +
-    list.map(s => `<tr class="click" data-id="${s.id}">${withDate ? `<td>${s.date}</td>` : ""}
+    list.map(s => `<tr class="click" data-id="${esc(s.id)}">${withDate ? `<td>${s.date}</td>` : ""}
       <td><span class="badge ${KIND[s.kind][1]}">${KIND[s.kind][0]}</span></td>
-      <td>${esc(s.name)}</td><td class="num">${money(s.price)}</td><td>${esc(s.why)}</td></tr>`).join("") + "</tbody></table>";
+      <td>${esc(s.name)}<div class="sub">${esc(s.detail || "")}</div></td><td class="num">${money(s.price)}</td><td>${esc(s.why)}</td></tr>`).join("") + "</tbody></table>";
 }
 
 function alertsView() {
-  const sum = S.summary, sig = sum.signals;
+  const sum = S.summary, sig = sum.signals, c = sum.config;
   const n = k => sig.filter(s => s.kind === k).length;
   const history = sum.snapshots < 2
-    ? `<div class="panel" style="margin-bottom:16px">Collecting history. Alerts start after the second daily snapshot, and the 7-day trend check needs about a week.</div>` : "";
+    ? `<div class="panel" style="margin-bottom:16px">Collecting history. Alerts start after the second daily snapshot. The 7-day climb check needs about a week and the 30-day check about a month.</div>` : "";
   return `${history}<div class="tiles">
       <div class="tile"><b class="down">${n("spike")}</b><span>Possible buyouts today</span></div>
-      <div class="tile"><b class="up">${n("trend")}</b><span>Steady climbs today</span></div>
+      <div class="tile"><b class="up">${n("trend")}</b><span>7-day climbs today</span></div>
+      <div class="tile"><b class="up">${n("slow")}</b><span>30-day climbs today</span></div>
       <div class="tile"><b style="color:var(--warn)">${n("crash")}</b><span>Crashes today</span></div>
       <div class="tile"><b>${sum.alert_log.length}</b><span>Alerts in the log</span></div>
     </div>
     <div class="panel" style="margin-bottom:16px"><h2>Flagged today (${sum.date})</h2>${signalTable(sig, false)}
-      <div class="note">Buyout = one-day jump of at least ${sum.config.spike.min_pct}% and $${sum.config.spike.min_dollar} on a card now ≥ $${sum.config.spike.min_price}.
-      Climb = up ${sum.config.trend.min_pct}%+ over ${sum.config.trend.window_days} days, rising on ${sum.config.trend.min_up_days}+ days. Thresholds live in config.json.</div></div>
+      <div class="note">Buyout = one-day jump of ${c.spike.min_pct}%+ and $${c.spike.min_dollar}+, now $${c.spike.min_price}+.
+      7-day climb = up ${c.trend.min_pct}%+ over ${c.trend.window_days} days, rising on ${c.trend.min_up_days}+ days.
+      30-day climb = up ${c.slow.min_pct}%+ and $${c.slow.min_dollar}+ over 30 days. Brand-new printings are silent for their first ${14} days. Thresholds live in config.json.</div></div>
     <div class="panel"><h2>Alert history</h2>${signalTable(sum.alert_log, true)}</div>`;
 }
 
 function moversView() {
-  const idx = { 1: 3, 7: 4, 30: 5 }[S.moverPeriod];
-  const pool = S.rows.filter(r => r[2] >= S.moverMin && r[idx] != null);
-  const dollar = r => r[2] - r[2] / (1 + r[idx] / 100);
+  const idx = { 1: R.D1, 7: R.D7, 30: R.D30 }[S.moverPeriod];
+  const pool = S.rows.filter(r => r[R.P] >= S.moverMin && r[idx] != null);
+  const dollar = r => r[R.P] - r[R.P] / (1 + r[idx] / 100);
   const gain = [...pool].sort((a, b) => b[idx] - a[idx]).slice(0, 40);
   const loss = [...pool].sort((a, b) => a[idx] - b[idx]).slice(0, 40);
   const tbl = list => `<table><thead><tr><th></th><th>Card</th><th class="num">Price</th><th class="num">Change</th><th class="num">$</th></tr></thead><tbody>` +
-    list.map(r => `<tr class="click" data-id="${r[0]}"><td>${starBtn(r[0])}</td><td>${esc(r[1])}</td><td class="num">${money(r[2])}</td>
+    list.map(r => `<tr class="click" data-id="${esc(r[R.K])}"><td>${starBtn(r[R.K])}</td>
+      <td>${esc(r[R.N])}<div class="sub">${esc(detailLine(r))}</div></td><td class="num">${money(r[R.P])}</td>
       <td class="num">${pctCell(r[idx])}</td><td class="num">${(dollar(r) >= 0 ? "+" : "−") + money(Math.abs(dollar(r)))}</td></tr>`).join("") + "</tbody></table>";
   return `<div class="controls">
       <div class="seg" id="period">${[1, 7, 30].map(p => `<button data-p="${p}" class="${p === S.moverPeriod ? "on" : ""}">${p === 1 ? "1 day" : p + " days"}</button>`).join("")}</div>
@@ -180,47 +188,49 @@ function moversView() {
     ${S.summary.snapshots < 31 && S.moverPeriod > 1 ? `<div class="note">Less than ${S.moverPeriod} days of history so far, so this compares with the oldest snapshot (${S.summary.first_date}).</div>` : ""}`;
 }
 
-function starBtn(id) { return `<button class="star ${S.watch.has(id) ? "on" : ""}" data-star="${id}" title="Watchlist">${S.watch.has(id) ? "★" : "☆"}</button>`; }
+function starBtn(key) { return `<button class="star ${S.watch.has(key) ? "on" : ""}" data-star="${esc(key)}" title="Watchlist">${S.watch.has(key) ? "★" : "☆"}</button>`; }
 
 function cardTable(list, limit = 200) {
-  const cols = [["Card", 1], ["Price", 2], ["1d", 3], ["7d", 4], ["30d", 5]];
+  const cols = [["Card", R.N], ["Price", R.P], ["1d", R.D1], ["7d", R.D7], ["30d", R.D30]];
   const sorted = [...list].sort((a, b) => {
     const x = a[S.sortKey], y = b[S.sortKey];
     if (x == null) return 1; if (y == null) return -1;
     return (x > y ? 1 : x < y ? -1 : 0) * S.sortDir;
   });
-  return `<table><thead><tr><th></th>${cols.map(([l, k]) => `<th class="${k > 1 ? "num" : ""}" data-sort="${k}">${l}${S.sortKey === k ? (S.sortDir > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr></thead><tbody>` +
-    sorted.slice(0, limit).map(r => `<tr class="click" data-id="${r[0]}"><td>${starBtn(r[0])}</td><td>${esc(r[1])}</td><td class="num">${money(r[2])}</td>
-      <td class="num">${pctCell(r[3])}</td><td class="num">${pctCell(r[4])}</td><td class="num">${pctCell(r[5])}</td></tr>`).join("") +
+  return `<table><thead><tr><th></th>${cols.map(([l, k]) => `<th class="${k > R.N ? "num" : ""}" data-sort="${k}">${l}${S.sortKey === k ? (S.sortDir > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr></thead><tbody>` +
+    sorted.slice(0, limit).map(r => `<tr class="click" data-id="${esc(r[R.K])}"><td>${starBtn(r[R.K])}</td>
+      <td>${esc(r[R.N])}<div class="sub">${esc(detailLine(r))}</div></td><td class="num">${money(r[R.P])}</td>
+      <td class="num">${pctCell(r[R.D1])}</td><td class="num">${pctCell(r[R.D7])}</td><td class="num">${pctCell(r[R.D30])}</td></tr>`).join("") +
     `</tbody></table>${sorted.length > limit ? `<div class="note">Showing ${limit} of ${sorted.length.toLocaleString()}. Narrow the search to see more.</div>` : ""}`;
 }
 
 function searchResults() {
-  const q = S.query.trim().toLowerCase();
-  return cardTable(q ? S.rows.filter(r => r[1].toLowerCase().includes(q)) : S.rows);
+  const words = S.query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return cardTable(S.rows);
+  return cardTable(S.rows.filter((r, i) => words.every(w => S.hay[i].includes(w))));
 }
 function searchView() {
-  return `<div class="controls"><input type="search" id="q" placeholder="Search ${S.rows.length.toLocaleString()} cards…" value="${esc(S.query)}"></div>
+  return `<div class="controls"><input type="search" id="q" placeholder="Search ${S.rows.length.toLocaleString()} printings (name, set, rarity, code)…" value="${esc(S.query)}"></div>
     <div class="panel" id="results">${searchResults()}</div>`;
 }
 function refreshResults() { const r = $("#results"); r.innerHTML = searchResults(); wire(r); }
 
 function watchView() {
-  const list = [...S.watch].map(id => S.byId.get(id)).filter(Boolean);
-  return `<div class="panel"><h2>Your watchlist</h2>${list.length ? cardTable(list) : '<div class="empty">Tap ☆ next to any card to watch it. Your list is saved in this browser.</div>'}</div>`;
+  const list = [...S.watch].map(k => S.byId.get(k)).filter(Boolean);
+  return `<div class="panel"><h2>Your watchlist</h2>${list.length ? cardTable(list) : '<div class="empty">Tap ☆ next to any printing to watch it. Your list is saved in this browser.</div>'}</div>`;
 }
 
 function wire(v) {
   v.querySelectorAll("tr.click").forEach(tr => tr.addEventListener("click", e => {
-    if (e.target.closest("[data-star]")) return; openCard(+tr.dataset.id);
+    if (e.target.closest("[data-star]")) return; openCard(tr.dataset.id);
   }));
   v.querySelectorAll("[data-star]").forEach(b => b.addEventListener("click", e => {
-    e.stopPropagation(); const id = +b.dataset.star;
-    S.watch.has(id) ? S.watch.delete(id) : S.watch.add(id); saveWatch();
-    if (S.tab === "watch") render(); else { b.classList.toggle("on"); b.textContent = S.watch.has(id) ? "★" : "☆"; }
+    e.stopPropagation(); const key = b.dataset.star;
+    S.watch.has(key) ? S.watch.delete(key) : S.watch.add(key); saveWatch();
+    if (S.tab === "watch") render(); else { b.classList.toggle("on"); b.textContent = S.watch.has(key) ? "★" : "☆"; }
   }));
   v.querySelectorAll("[data-sort]").forEach(th => th.addEventListener("click", () => {
-    const k = +th.dataset.sort; S.sortDir = S.sortKey === k ? -S.sortDir : (k === 1 ? 1 : -1); S.sortKey = k; rerenderKeepFocus();
+    const k = +th.dataset.sort; S.sortDir = S.sortKey === k ? -S.sortDir : (k === R.N ? 1 : -1); S.sortKey = k; rerenderKeepFocus();
   }));
   const q = $("#q", v);
   if (q) q.addEventListener("input", () => { S.query = q.value; refreshResults(); });
@@ -229,47 +239,48 @@ function wire(v) {
   const mp = $("#minp", v);
   if (mp) mp.addEventListener("change", () => { S.moverMin = +mp.value || 0; render(); });
 }
-function rerenderKeepFocus() {
-  if (S.tab === "search") refreshResults(); else render();
+function rerenderKeepFocus() { if (S.tab === "search") refreshResults(); else render(); }
+
+async function loadHist(key) {
+  const chunk = parseInt(key, 10) % 256;
+  try {
+    if (!S.hist[chunk]) S.hist[chunk] = await fetch(`data/hist/${chunk}.json`, { cache: "no-store" }).then(r => r.json());
+    const h = S.hist[chunk];
+    return { dates: h.dates, prices: h.cards[key] || [] };
+  } catch { return { dates: [], prices: [] }; }
 }
 
-async function loadHist(id) {
-  const chunk = id % 64;
-  if (!S.hist[chunk]) S.hist[chunk] = await fetch(`data/hist/${chunk}.json`, { cache: "no-store" }).then(r => r.json());
-  const h = S.hist[chunk];
-  return { dates: h.dates, prices: h.cards[String(id)] || [] };
-}
-
-async function openCard(id) {
-  const r = S.byId.get(id); if (!r) return;
-  history.replaceState(null, "", "#card-" + id);
+async function openCard(key) {
+  const r = S.byId.get(key); if (!r) return;
+  history.replaceState(null, "", "#card-" + encodeURIComponent(key));
   const box = $("#detailBox");
-  box.innerHTML = `<button class="close" aria-label="Close">×</button><h3>${esc(r[1])}</h3><div class="meta">Loading history…</div>`;
+  box.innerHTML = `<button class="close" aria-label="Close">×</button><h3>${esc(r[R.N])}</h3><div class="meta">Loading history…</div>`;
   $("#detail").classList.add("open");
   wireDetail();
-  const { dates, prices } = await loadHist(id);
+  const { dates, prices } = await loadHist(key);
   const pts = dates.map((d, i) => [d, prices[i]]).filter(p => p[1] != null);
   const vals = pts.map(p => p[1]);
-  const hi = Math.max(...vals), lo = Math.min(...vals);
-  const alerts = S.summary.alert_log.filter(a => a.id === id);
+  const hi = vals.length ? Math.max(...vals) : null, lo = vals.length ? Math.min(...vals) : null;
+  const alerts = S.summary.alert_log.filter(a => a.id === key);
   box.innerHTML = `<button class="close" aria-label="Close">×</button>
-    <h3>${esc(r[1])}</h3>
-    <div class="meta"><a href="${tcg(r[1])}" target="_blank" rel="noopener">Open on TCGplayer</a> ·
-      <button class="star ${S.watch.has(id) ? "on" : ""}" data-star="${id}">${S.watch.has(id) ? "★ Watching" : "☆ Watch"}</button></div>
+    <h3>${esc(r[R.N])}</h3>
+    <div class="sub">${esc(detailLine(r))}</div>
+    <div class="meta" style="margin-top:6px"><a href="${tcg(key)}" target="_blank" rel="noopener">Open on TCGplayer</a> ·
+      <button class="star ${S.watch.has(key) ? "on" : ""}" data-star="${esc(key)}">${S.watch.has(key) ? "★ Watching" : "☆ Watch"}</button></div>
     <div class="stats" style="margin-top:12px">
-      <div><span>Price</span><b>${money(r[2])}</b></div>
-      <div><span>1 day</span><b>${pctCell(r[3])}</b></div>
-      <div><span>7 days</span><b>${pctCell(r[4])}</b></div>
-      <div><span>30 days</span><b>${pctCell(r[5])}</b></div>
-      <div><span>High / low shown</span><b>${money(hi)} / ${money(lo)}</b></div>
+      <div><span>Price</span><b>${money(r[R.P])}</b></div>
+      <div><span>1 day</span><b>${pctCell(r[R.D1])}</b></div>
+      <div><span>7 days</span><b>${pctCell(r[R.D7])}</b></div>
+      <div><span>30 days</span><b>${pctCell(r[R.D30])}</b></div>
+      <div><span>High / low shown</span><b>${hi == null ? "–" : money(hi) + " / " + money(lo)}</b></div>
     </div>
-    ${chartSvg(pts)}
-    ${alerts.length ? `<h2 style="font-size:14px">Alerts for this card</h2>${signalTable(alerts, true)}` : ""}
-    <div class="note">TCGplayer price from YGOPRODeck, one value per card (not per printing).</div>`;
+    ${pts.length ? chartSvg(pts) : `<div class="empty">No chart stored for printings under ${money(S.summary.hist_min_price)}.</div>`}
+    ${alerts.length ? `<h2 style="font-size:14px">Alerts for this printing</h2>${signalTable(alerts, true)}` : ""}
+    <div class="note">TCGplayer market price for this specific printing, via tcgcsv.com.</div>`;
   wireDetail();
   box.querySelector("[data-star]").addEventListener("click", e => {
-    S.watch.has(id) ? S.watch.delete(id) : S.watch.add(id); saveWatch();
-    e.target.className = "star " + (S.watch.has(id) ? "on" : ""); e.target.textContent = S.watch.has(id) ? "★ Watching" : "☆ Watch";
+    S.watch.has(key) ? S.watch.delete(key) : S.watch.add(key); saveWatch();
+    e.target.className = "star " + (S.watch.has(key) ? "on" : ""); e.target.textContent = S.watch.has(key) ? "★ Watching" : "☆ Watch";
     if (S.tab !== "alerts") render();
   });
 }
@@ -277,16 +288,16 @@ function wireDetail() { $("#detailBox .close").onclick = closeCard; }
 function closeCard() { $("#detail").classList.remove("open"); history.replaceState(null, "", location.pathname + location.search); }
 $("#detail").addEventListener("click", e => { if (e.target.id === "detail") closeCard(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeCard(); });
-function openFromHash() { const m = location.hash.match(/^#card-(\d+)$/); if (m) openCard(+m[1]); }
+function openFromHash() { const m = location.hash.match(/^#card-(.+)$/); if (m) openCard(decodeURIComponent(m[1])); }
 window.addEventListener("hashchange", openFromHash);
 
 function chartSvg(pts) {
   if (pts.length < 2) return `<div class="empty">Chart appears after a second day of prices.</div>`;
-  const W = 700, H = 240, L = 54, R = 12, T = 12, B = 26;
+  const W = 700, H = 240, L = 54, Rr = 12, T = 12, B = 26;
   const vals = pts.map(p => p[1]);
   let lo = Math.min(...vals), hi = Math.max(...vals);
   const pad = (hi - lo) * 0.1 || hi * 0.1 || 1; lo = Math.max(0, lo - pad); hi += pad;
-  const x = i => L + (i / (pts.length - 1)) * (W - L - R);
+  const x = i => L + (i / (pts.length - 1)) * (W - L - Rr);
   const y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
   const line = pts.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p[1]).toFixed(1)}`).join("");
   const area = line + `L${x(pts.length - 1)},${H - B}L${L},${H - B}Z`;
@@ -295,7 +306,7 @@ function chartSvg(pts) {
   const up = vals[vals.length - 1] >= vals[0];
   const col = up ? "var(--up)" : "var(--down)";
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Price history">
-    ${ticks.map(t => `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)"/><text x="${L - 6}" y="${y(t) + 4}" text-anchor="end">${money(t)}</text>`).join("")}
+    ${ticks.map(t => `<line x1="${L}" x2="${W - Rr}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)"/><text x="${L - 6}" y="${y(t) + 4}" text-anchor="end">${money(t)}</text>`).join("")}
     <path d="${area}" fill="${col}" opacity=".10"/>
     <path d="${line}" fill="none" stroke="${col}" stroke-width="2" vector-effect="non-scaling-stroke"/>
     ${xl.map(i => `<text x="${x(i)}" y="${H - 6}" text-anchor="${i === 0 ? "start" : i === pts.length - 1 ? "end" : "middle"}">${pts[i][0].slice(5)}</text>`).join("")}
