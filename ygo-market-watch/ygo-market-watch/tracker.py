@@ -133,6 +133,18 @@ def analyze(snaps, meta, date):
         ref30 = snaps[0]
     recent = snaps[-(cfg["trend"]["window_days"] + 1):]
 
+        # New cards: first priced after tracking began and still inside the quiet period.
+    quiet_days = cfg["alerts"].get("new_card_quiet_days", 14)
+    first_seen = {}
+    for d, p in snaps:
+        for cid in p:
+            first_seen.setdefault(cid, d)
+    baseline = snaps[0][0]
+    quiet_ids = {
+        cid for cid, d in first_seen.items()
+        if d > baseline and (d0 - dt.date.fromisoformat(d)).days < quiet_days
+    }
+
     rows, signals = [], []
     for cid, p in latest.items():
         p1 = prev.get(cid) if prev else None
@@ -141,6 +153,8 @@ def analyze(snaps, meta, date):
         d1, d7, d30 = pct(p, p1), pct(p, p7), pct(p, p30)
         name = meta.get(cid, {}).get("n", cid)
         rows.append([int(cid), name, p, d1, d7, d30])
+        if cid in quiet_ids:
+            continue
 
         base = {"id": int(cid), "name": name, "price": p}
         # Possible buyout: sharp one-day jump.
