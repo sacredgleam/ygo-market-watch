@@ -1,31 +1,39 @@
 {
   "spike": {
-    "min_pct": 35,
+    "min_pct": 25,
     "min_dollar": 1.0,
     "min_price": 2.0,
     "min_prev_price": 0.5
   },
   "trend": {
     "window_days": 7,
-    "min_pct": 25,
-    "min_dollar": 1.5,
+    "min_pct": 15,
+    "min_dollar": 1.0,
     "min_price": 2.0,
-    "min_up_days": 4,
-    "max_down_days": 1
+    "min_up_days": 3,
+    "max_down_days": 2
+  },
+  "slow": {
+    "min_pct": 20,
+    "min_dollar": 2.0,
+    "min_price": 3.0
   },
   "crash": {
-    "min_pct": 30,
+    "min_pct": 25,
     "min_dollar": 2.0,
     "min_prev_price": 5.0
   },
   "alerts": {
     "cooldown_days": 5,
     "realert_extra_pct": 25,
-    "new_card_quiet_days": 14
+    "new_card_quiet_days": 14,
+    "issue_rows_per_type": 150
   },
   "site": {
-    "history_days": 120,
-    "alert_log_size": 300,
-    "min_price_movers": 1.0
+    "history_days": 90,
+    "alert_log_size": 500,
+    "min_price_movers": 1.0,
+    "min_store_price": 0.25,
+    "hist_min_price": 1.0
   }
 }
