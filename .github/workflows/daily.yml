@@ -2,7 +2,8 @@ name: Daily price check
 
 on:
   schedule:
-    - cron: "17 15 * * *"
+    # 09:17 UTC = 4:17 AM Eastern in winter, after tcgcsv's nightly price update
+    - cron: "17 9 * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -22,6 +23,7 @@ defaults:
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -42,7 +44,7 @@ jobs:
         run: |
           git config user.name "ygo-market-watch"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data
+          git add data-printings
           git commit -m "Price snapshot $(date -u +%F)" || echo "nothing to commit"
           git push
 
