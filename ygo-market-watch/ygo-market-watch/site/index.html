@@ -57,6 +57,7 @@
   .seg button { border: 0; background: var(--panel); color: var(--muted); padding: 7px 12px; font: inherit; cursor: pointer; }
   .seg button.on { background: var(--accent); color: #fff; }
   .empty { color: var(--muted); padding: 18px 4px; }
+  .seg-btn { border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 7px 12px; border-radius: 8px; font: inherit; cursor: pointer; }
   .star { background: none; border: 0; cursor: pointer; font-size: 16px; color: var(--muted); padding: 0 4px; }
   .star.on { color: #e0a800; }
   .note { color: var(--muted); font-size: 12px; margin-top: 10px; }
@@ -94,7 +95,7 @@
 // Row layout: [key, name, set, rarity, printing, number, price, 1d%, 7d%, 30d%]
 const R = { K: 0, N: 1, SET: 2, RAR: 3, SUB: 4, NUM: 5, P: 6, D1: 7, D7: 8, D30: 9 };
 const S = { summary: null, rows: [], hay: [], byId: new Map(), hist: {}, tab: "alerts",
-            moverPeriod: 1, moverMin: 1, sortKey: R.P, sortDir: -1, query: "", watch: loadWatch() };
+            moverPeriod: 1, moverMin: 1, sortKey: R.P, sortDir: -1, query: "", logShown: 25, logKind: "all", watch: loadWatch() };
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const money = x => x == null ? "–" : "$" + x.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -166,9 +167,20 @@ function alertsView() {
       <div class="note">Buyout = one-day jump of ${c.spike.min_pct}%+ and $${c.spike.min_dollar}+, now $${c.spike.min_price}+.
       7-day climb = up ${c.trend.min_pct}%+ over ${c.trend.window_days} days, rising on ${c.trend.min_up_days}+ days.
       30-day climb = up ${c.slow.min_pct}%+ and $${c.slow.min_dollar}+ over 30 days. Brand-new printings are silent for their first ${14} days. Thresholds live in config.json.</div></div>
-    <div class="panel"><h2>Alert history</h2>${signalTable(sum.alert_log, true)}</div>`;
+    ${historyPanel()}`;
 }
 
+function historyPanel() {
+  const all = S.summary.alert_log;
+  const list = S.logKind === "all" ? all : all.filter(a => a.kind === S.logKind);
+  const shown = list.slice(0, S.logShown);
+  const kinds = [["all", "All"], ["spike", "Buyouts"], ["trend", "7-day"], ["slow", "30-day"], ["crash", "Crashes"]];
+  return `<div class="panel"><h2>Alert history</h2>
+    <div class="controls"><div class="seg" id="logkind">${kinds.map(([k, l]) => `<button data-k="${k}" class="${k === S.logKind ? "on" : ""}">${l}</button>`).join("")}</div></div>
+    ${signalTable(shown, true)}
+    ${list.length > shown.length ? `<div class="controls" style="margin:12px 0 0"><button class="seg-btn" id="logmore">Show 25 more (${shown.length} of ${list.length})</button></div>` : ""}</div>`;
+}
+  
 function moversView() {
   const idx = { 1: R.D1, 7: R.D7, 30: R.D30 }[S.moverPeriod];
   const pool = S.rows.filter(r => r[R.P] >= S.moverMin && r[idx] != null);
@@ -238,6 +250,10 @@ function wire(v) {
   if (per) per.addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.moverPeriod = +b.dataset.p; render(); } });
   const mp = $("#minp", v);
   if (mp) mp.addEventListener("change", () => { S.moverMin = +mp.value || 0; render(); });
+  const lk = $("#logkind", v);
+  if (lk) lk.addEventListener("click", e => { const b = e.target.closest("button"); if (b) { S.logKind = b.dataset.k; S.logShown = 25; render(); } });
+  const lm = $("#logmore", v);
+  if (lm) lm.addEventListener("click", () => { S.logShown += 25; render(); });
 }
 function rerenderKeepFocus() { if (S.tab === "search") refreshResults(); else render(); }
 
